@@ -275,42 +275,13 @@
         ctx.strokeStyle = "#2b6cb0";
         ctx.strokeRect(radiator.x, radiator.y, radiator.w, radiator.h);
 
-        // Size label (mm) and BTU output
+        // --- Info for below radiator ---
         const widthMm = Math.round((radiator.w / gridSize) * MM_PER_GRID);
         const heightMm = Math.round((radiator.h / gridSize) * MM_PER_GRID);
-
-        ctx.fillStyle = "#2b6cb0";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        const centerX = radiator.x + radiator.w / 2;
-        const centerY = radiator.y + radiator.h / 2;
-
-        // Line 1: size
-        ctx.font = "16px system-ui, sans-serif";
-        ctx.fillText(`${widthMm} × ${heightMm} mm`, centerX, centerY - 10);
-
-        // Line 2: approx output and ΔT
         const watts = estimateRadiatorWatts();
         const wattsRounded = Math.round(watts / 50) * 50; // round to nearest 50 W
-        ctx.font = "13px system-ui, sans-serif";
-        ctx.fillText(
-          `~${wattsRounded.toLocaleString()} W`,
-          centerX,
-          centerY + 8,
-        );
-
-        // Line 3: very rough room size estimate
         const wPerM2 = heatLossWattsPerM2();
         const estM2 = wattsRounded / wPerM2;
-
-        ctx.font = "14px system-ui, sans-serif";
-        ctx.fillStyle = "#444";
-        ctx.fillText(
-          `≈ ${Math.max(0, Math.round(estM2)).toLocaleString()} m²`,
-          centerX,
-          centerY + 30,
-        );
 
         // Connectors
         const connectors = getConnectors();
@@ -338,6 +309,33 @@
         ctx.lineTo(hx, hy - 20);
         ctx.closePath();
         ctx.fill();
+
+        // ---- Info text below radiator ----
+        const infoX = radiator.x + radiator.w / 2;
+        let infoY = radiator.y + radiator.h + 18;
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "#333";
+
+        // Size
+        ctx.font = "15px system-ui, sans-serif";
+        ctx.fillText(`${widthMm} × ${heightMm} mm`, infoX, infoY);
+        infoY += 18;
+
+        // Wattage
+        ctx.font = "13px system-ui, sans-serif";
+        ctx.fillText(`~${wattsRounded.toLocaleString()} W`, infoX, infoY);
+        infoY += 16;
+
+        // Room size estimate (primary)
+        ctx.font = "15px system-ui, sans-serif";
+        ctx.fillStyle = "#222";
+        ctx.fillText(
+          `≈ ${Math.max(0, Math.round(estM2)).toLocaleString()} m²`,
+          infoX,
+          infoY,
+        );
       }
 
       // Added slider drawing helper below drawConstructionBox()
