@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Radiator Sandbox – Alpha</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #f5f5f5;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+        background: white;
+        margin: 0;
+        padding: 0;
+      }
+
+      header#controls {
+        height: 60px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        background: #fafafa;
+        border-bottom: 1px solid #ddd;
+        box-sizing: border-box;
+      }
+
+      header#controls label {
+        font-size: 14px;
+      }
+
+      header#controls select {
+        margin-left: 8px;
+        padding: 4px 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header id="controls">
+      <label style="margin-right: 16px">
+        Radiator type:
+        <select id="radiatorType">
+          <option value="11">Steel – Type 11</option>
+          <option value="21">Steel – Type 21</option>
+          <option value="22" selected>Steel – Type 22</option>
+          <option value="33">Steel – Type 33</option>
+          <option value="aluminium">Aluminium</option>
+        </select>
+      </label>
+
+      <label style="margin-right: 16px">
+        Room:
+        <input
+          id="roomTemp"
+          type="number"
+          value="20"
+          min="5"
+          max="30"
+          step="1"
+        />
+        °C
+      </label>
+      <label style="margin-right: 16px">
+        Insulation:
+        <select id="insulation">
+          <option value="good">Good</option>
+          <option value="medium" selected>Medium</option>
+          <option value="poor">Poor</option>
+        </select>
+      </label>
+    </header>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      function resizeCanvas() {
+        const headerHeight = document.getElementById("controls").offsetHeight;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - headerHeight;
+        canvas.style.marginTop = "0";
+        redraw();
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+
+      const gridSize = 60;
+      const MM_PER_GRID = 200; // 1 grid cell = 200 mm (visual grid stays the same)
+      const CONSTRUCTION_GAP = 14;
+      const CONSTRUCTION_HEIGHT = 28;
+
+      function drawGrid() {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#eee";
+        for (let x = 0; x <= canvas.width; x += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+        for (let y = 0; y <= canvas.height; y += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+      }
+
+      function drawConstructionBox() {
+        // Position: attached to radiator, above it, with a gap
+        const x = radiator.x;
+        const y = radiator.y - CONSTRUCTION_GAP - CONSTRUCTION_HEIGHT;
+        const w = radiator.w;
+        const h = CONSTRUCTION_HEIGHT;
+
+        // Background outline
+        ctx.strokeStyle = "#aaa";
+        ctx.strokeRect(x, y, w, h);
+
+        let sequence;
+
+        switch (radiatorType) {
+          case "11":
+            sequence = ["P", "F"];
+            break;
+          case "21":
+            sequence = ["P", "F", "P"];
+            break;
+          case "22":
+            sequence = ["P", "F", "P", "F"];
+            break;
+          case "33":
+            sequence = ["P", "F", "P", "F", "P", "F"];
+            break;
+          case "aluminium":
+            sequence = ["A"];
+            break;
+        }
+
+        if (sequence[0] === "A") {
+          ctx.fillStyle = "#c7defa";
+          ctx.fillRect(x, y, w, h);
+
+          ctx.strokeStyle = "#a9c9ee";
+          for (let sx = x + 6; sx < x + w; sx += 10) {
+            ctx.beginPath();
+            ctx.moveTo(sx, y + 4);
+            ctx.lineTo(sx, y + h - 4);
+            ctx.stroke();
+          }
+          return;
+        }
+
+        const unitW = w / sequence.length;
+
+        for (let i = 0; i < sequence.length; i++) {
+          const bx = x + i * unitW;
+          const type = sequence[i];
+
+          if (type === "P") {
+            // Panel
+            ctx.fillStyle = "#9ecbff";
+            ctx.fillRect(bx, y, unitW, h);
+          } else {
+            // Convector (darker + subtle stripes)
+            ctx.fillStyle = "#c7defa";
+            ctx.fillRect(bx, y, unitW, h);
+
+            ctx.strokeStyle = "#a9c9ee";
+            for (let sx = bx + 4; sx < bx + unitW; sx += 6) {
+              ctx.beginPath();
+              ctx.moveTo(sx, y + 4);
+              ctx.lineTo(sx, y + h - 4);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      // Added slider state + bounds
+      let waterTemp = 70;
+      let deltaDrop = 10;
+
+      let flowTemp = 70; // IN temperature
+      let returnTemp = 60; // OUT temperature
+
+      const FLOW_MIN = 40;
+      const FLOW_MAX = 90;
+      const RETURN_MIN = 20;
+
+      let draggingInSlider = false;
+      let draggingOutSlider = false;
+
+      const radiator = {
+        x: gridSize * 2,
+        y: gridSize * 2,
+        w: gridSize * 3,
+        h: gridSize * 2,
+        resizing: false,
+        dragging: false,
+        dragOffsetX: 0,
+        dragOffsetY: 0,
+        inflow: "tl", // default IN: top-left
+        outflow: "tr", // default OUT: top-right
+      };
+
+      let radiatorType = "22";
+      let roomTemp = 20;
+      let insulation = "medium";
+
+      function heatLossWattsPerM2() {
+        // Very rough rules of thumb
+        if (insulation === "good") return 45;
+        if (insulation === "poor") return 100;
+        return 70; // medium
+      }
+
+      function getConnectors() {
+        return {
+          tl: { x: radiator.x, y: radiator.y },
+          tr: { x: radiator.x + radiator.w, y: radiator.y },
+          bl: { x: radiator.x, y: radiator.y + radiator.h },
+          br: { x: radiator.x + radiator.w, y: radiator.y + radiator.h },
+        };
+      }
+
+      // Updated computeDeltaT() to use explicit temps
+      function computeDeltaT() {
+        const avgWaterTemp = (flowTemp + returnTemp) / 2;
+        return Math.max(5, avgWaterTemp - roomTemp);
+      }
+
+      // Updated getFlowReturnTemps() to use explicit temps
+      function getFlowReturnTemps() {
+        return { flow: flowTemp, ret: returnTemp };
+      }
+
+      function estimateRadiatorWatts() {
+        // Face area (m²)
+        const widthM = ((radiator.w / gridSize) * MM_PER_GRID) / 1000;
+        const heightM = ((radiator.h / gridSize) * MM_PER_GRID) / 1000;
+        const areaM2 = Math.max(0, widthM * heightM);
+
+        // EN 442 calibrated baselines (ΔT50), per m² of front face
+        // Aligned to real catalogue data (e.g. Stelrad / Wickes)
+        const wattsPerM2ByType = {
+          11: 1500, // ~Type 11 600×1200 ≈ 1000–1100 W
+          21: 2200, // between 11 and 22
+          22: 2800, // ~Type 22 600×1200 ≈ 1900–2050 W
+          33: 4000, // ~Type 33 600×1200 ≈ 2800–3000 W
+          aluminium: 3000,
+        };
+
+        const baseWattsPerM2 = wattsPerM2ByType[radiatorType] ?? 1200;
+        const baseWatts = areaM2 * baseWattsPerM2;
+
+        // Estimate ΔT from user-friendly inputs
+        const deltaT = computeDeltaT();
+
+        // Radiator output scaling (non-linear)
+        const exponent = 1.3;
+        const scaledWatts = baseWatts * Math.pow(deltaT / 50, exponent);
+
+        return scaledWatts;
+      }
+
+      function drawRadiator() {
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#9ecbff";
+        ctx.fillRect(radiator.x, radiator.y, radiator.w, radiator.h);
+
+        ctx.strokeStyle = "#2b6cb0";
+        ctx.strokeRect(radiator.x, radiator.y, radiator.w, radiator.h);
+
+        // Size label (mm) and BTU output
+        const widthMm = Math.round((radiator.w / gridSize) * MM_PER_GRID);
+        const heightMm = Math.round((radiator.h / gridSize) * MM_PER_GRID);
+
+        ctx.fillStyle = "#2b6cb0";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const centerX = radiator.x + radiator.w / 2;
+        const centerY = radiator.y + radiator.h / 2;
+
+        // Line 1: size
+        ctx.font = "16px system-ui, sans-serif";
+        ctx.fillText(`${widthMm} × ${heightMm} mm`, centerX, centerY - 10);
+
+        // Line 2: approx output and ΔT
+        const watts = estimateRadiatorWatts();
+        const wattsRounded = Math.round(watts / 50) * 50; // round to nearest 50 W
+        ctx.font = "13px system-ui, sans-serif";
+        ctx.fillText(
+          `~${wattsRounded.toLocaleString()} W`,
+          centerX,
+          centerY + 8,
+        );
+
+        // Line 3: very rough room size estimate
+        const wPerM2 = heatLossWattsPerM2();
+        const estM2 = wattsRounded / wPerM2;
+
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillStyle = "#444";
+        ctx.fillText(
+          `≈ ${Math.max(0, Math.round(estM2)).toLocaleString()} m²`,
+          centerX,
+          centerY + 30,
+        );
+
+        // Connectors
+        const connectors = getConnectors();
+        for (const [key, p] of Object.entries(connectors)) {
+          let color = "#999";
+
+          if (radiator.inflow === key) color = "#2f855a"; // green
+          if (radiator.outflow === key) color = "#c53030"; // red
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+        }
+
+        // resize handle (bottom-right) – inset triangle
+        const inset = 10;
+        const hx = radiator.x + radiator.w - inset;
+        const hy = radiator.y + radiator.h - inset;
+
+        ctx.fillStyle = "#2b6cb0";
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.lineTo(hx - 20, hy);
+        ctx.lineTo(hx, hy - 20);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Added slider drawing helper below drawConstructionBox()
+      function drawTempSliders() {
+        const sliderWidth = 6;
+        const thumbRadius = 8;
+
+        const top = radiator.y;
+        const bottom = radiator.y + radiator.h;
+        const height = radiator.h;
+
+        // Map temp -> y
+        const mapTempToY = (temp, min, max) =>
+          bottom - ((temp - min) / (max - min)) * height;
+
+        // IN slider (left)
+        const inX = radiator.x - 20;
+        ctx.strokeStyle = "#2f855a";
+        ctx.lineWidth = sliderWidth;
+        ctx.beginPath();
+        ctx.moveTo(inX, top);
+        ctx.lineTo(inX, bottom);
+        ctx.stroke();
+
+        const inY = mapTempToY(flowTemp, FLOW_MIN, FLOW_MAX);
+        ctx.fillStyle = "#2f855a";
+        ctx.beginPath();
+        ctx.arc(inX, inY, thumbRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // IN temperature label
+        ctx.fillStyle = "#2f855a";
+        ctx.font = "15px system-ui, sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "right";
+        ctx.fillText(`${flowTemp}°C`, inX - 12, inY);
+
+        // OUT slider (right)
+        const outX = radiator.x + radiator.w + 20;
+        ctx.strokeStyle = "#c53030";
+        ctx.lineWidth = sliderWidth;
+        ctx.beginPath();
+        ctx.moveTo(outX, top);
+        ctx.lineTo(outX, bottom);
+        ctx.stroke();
+
+        const outY = mapTempToY(returnTemp, RETURN_MIN, flowTemp);
+        ctx.fillStyle = "#c53030";
+        ctx.beginPath();
+        ctx.arc(outX, outY, thumbRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // OUT temperature label
+        ctx.fillStyle = "#c53030";
+        ctx.font = "15px system-ui, sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillText(`${returnTemp}°C`, outX + 12, outY);
+
+        // Reset line width to default so it doesn't leak into other drawings
+        ctx.lineWidth = 1;
+      }
+
+      function redraw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+        drawConstructionBox();
+        drawRadiator();
+        drawTempSliders();
+      }
+
+      function snap(value) {
+        return Math.round(value / gridSize) * gridSize;
+      }
+
+      // Added slider hit-testing helpers below hitConnector()
+      function hitInSlider(mx, my) {
+        const x = radiator.x - 20;
+        return (
+          Math.abs(mx - x) < 12 &&
+          my >= radiator.y &&
+          my <= radiator.y + radiator.h
+        );
+      }
+
+      function hitOutSlider(mx, my) {
+        const x = radiator.x + radiator.w + 20;
+        return (
+          Math.abs(mx - x) < 12 &&
+          my >= radiator.y &&
+          my <= radiator.y + radiator.h
+        );
+      }
+
+      function updateCursor(mx, my) {
+        const hx = radiator.x + radiator.w;
+        const hy = radiator.y + radiator.h;
+
+        if (hitInSlider(mx, my) || hitOutSlider(mx, my)) {
+          canvas.style.cursor = "ns-resize";
+          return;
+        }
+
+        // Resize handle (triangle area)
+        const inset = 10;
+        const rhx = hx - inset;
+        const rhy = hy - inset;
+
+        if (mx > rhx - 24 && mx < rhx && my > rhy - 24 && my < rhy) {
+          canvas.style.cursor = "nwse-resize";
+          return;
+        }
+
+        // Drag body
+        if (
+          mx >= radiator.x &&
+          mx <= radiator.x + radiator.w &&
+          my >= radiator.y &&
+          my <= radiator.y + radiator.h
+        ) {
+          canvas.style.cursor = "move";
+          return;
+        }
+
+        canvas.style.cursor = "default";
+      }
+
+      canvas.addEventListener("mousedown", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        // Added slider dragging start handling
+        if (hitInSlider(mx, my)) {
+          draggingInSlider = true;
+          return;
+        }
+
+        if (hitOutSlider(mx, my)) {
+          draggingOutSlider = true;
+          return;
+        }
+
+        const hx = radiator.x + radiator.w;
+        const hy = radiator.y + radiator.h;
+
+        // Resize handle (bottom-right) – inset triangle area
+        const inset = 10;
+        const rhx = hx - inset;
+        const rhy = hy - inset;
+
+        if (mx > rhx - 24 && mx < rhx && my > rhy - 24 && my < rhy) {
+          radiator.resizing = true;
+          return;
+        }
+
+        // Drag body
+        if (
+          mx >= radiator.x &&
+          mx <= radiator.x + radiator.w &&
+          my >= radiator.y &&
+          my <= radiator.y + radiator.h
+        ) {
+          radiator.dragging = true;
+          radiator.dragOffsetX = mx - radiator.x;
+          radiator.dragOffsetY = my - radiator.y;
+        }
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        updateCursor(mx, my);
+
+        // Added slider dragging handling
+        const top = radiator.y;
+        const bottom = radiator.y + radiator.h;
+        const height = radiator.h;
+
+        const mapYToTemp = (y, min, max) =>
+          max - ((y - top) / height) * (max - min);
+
+        if (draggingInSlider) {
+          flowTemp = Math.round(
+            Math.min(
+              FLOW_MAX,
+              Math.max(FLOW_MIN, mapYToTemp(my, FLOW_MIN, FLOW_MAX)),
+            ),
+          );
+          if (returnTemp > flowTemp) returnTemp = flowTemp;
+          redraw();
+          return;
+        }
+
+        if (draggingOutSlider) {
+          returnTemp = Math.round(
+            Math.min(
+              flowTemp,
+              Math.max(RETURN_MIN, mapYToTemp(my, RETURN_MIN, flowTemp)),
+            ),
+          );
+          redraw();
+          return;
+        }
+
+        if (radiator.resizing) {
+          radiator.w = Math.max(gridSize, snap(mx - radiator.x));
+          radiator.h = Math.max(gridSize, snap(my - radiator.y));
+          redraw();
+          return;
+        }
+
+        if (radiator.dragging) {
+          radiator.x = snap(mx - radiator.dragOffsetX);
+          radiator.y = snap(my - radiator.dragOffsetY);
+          redraw();
+        }
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        radiator.resizing = false;
+        radiator.dragging = false;
+        draggingInSlider = false;
+        draggingOutSlider = false;
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        radiator.resizing = false;
+        radiator.dragging = false;
+        draggingInSlider = false;
+        draggingOutSlider = false;
+      });
+
+      document
+        .getElementById("radiatorType")
+        .addEventListener("change", (e) => {
+          radiatorType = e.target.value;
+          redraw();
+        });
+
+      document.getElementById("roomTemp").addEventListener("input", (e) => {
+        roomTemp = Number(e.target.value);
+        redraw();
+      });
+
+      document.getElementById("insulation").addEventListener("change", (e) => {
+        insulation = e.target.value;
+        redraw();
+      });
+
+      // Initial fullscreen sizing + first draw (after all constants/functions exist)
+      resizeCanvas();
+    </script>
+  </body>
+</html>
