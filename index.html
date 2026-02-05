@@ -314,9 +314,35 @@
         const infoX = radiator.x + radiator.w / 2;
         let infoY = radiator.y + radiator.h + 18;
 
+        // Background box for info text
+        const lines = [
+          `${widthMm} × ${heightMm} mm`,
+          `~${wattsRounded.toLocaleString()} W`,
+          `≈ ${Math.max(0, Math.round(estM2)).toLocaleString()} m²`,
+        ];
+
+        ctx.font = "15px system-ui, sans-serif";
+        const paddingX = 10;
+        const paddingY = 6;
+        const lineHeights = [18, 16, 18];
+        const boxWidth =
+          Math.max(...lines.map((l) => ctx.measureText(l).width)) +
+          paddingX * 2;
+        const boxHeight = lineHeights.reduce((a, b) => a + b, 0) + paddingY * 2;
+
+        const boxX = infoX - boxWidth / 2;
+        const boxY = infoY - paddingY;
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.strokeStyle = "#ddd";
+        ctx.lineWidth = 1;
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillStyle = "#333";
+        ctx.backgroundColor = "rgba(255, 255, 255, 0.8)";
 
         // Size
         ctx.font = "15px system-ui, sans-serif";
