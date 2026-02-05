@@ -41,12 +41,15 @@
         bottom: 0;
         left: 0;
         width: 100%;
-        font-size: 12px;
-        color: #555;
+        font-size: 14px;
+        color: #444;
         background: #fafafa;
         border-top: 1px solid #ddd;
-        padding: 6px 12px;
+        padding: 8px 12px;
         box-sizing: border-box;
+      }
+      #footerCurrent {
+        font-weight: 500;
       }
     </style>
   </head>
@@ -65,14 +68,7 @@
 
       <label style="margin-right: 16px">
         Szobahőmérséklet cel:
-        <input
-          id="roomTemp"
-          type="number"
-          value="22"
-          min="5"
-          max="30"
-          step="1"
-        />
+        <input id="roomTemp" type="number" min="5" max="30" step="1" />
         °C
       </label>
       <label style="margin-right: 16px">
@@ -86,6 +82,15 @@
     </header>
 
     <canvas id="canvas"></canvas>
+
+    <footer>
+      <div>
+        Megjegyzés: a radiátor gyártók a teljesítményt általában EN 442 szerint
+        adják meg (előremenő 75 °C / visszatérő 65 °C / szobahőmérséklet 20 °C,
+        ΔT50).
+      </div>
+      <div id="footerCurrent" style="margin-top: 4px"></div>
+    </footer>
 
     <script>
       const canvas = document.getElementById("canvas");
@@ -222,7 +227,8 @@
       };
 
       let radiatorType = "22";
-      let roomTemp = 20;
+      let roomTemp = 22;
+      document.getElementById("roomTemp").value = roomTemp;
       let insulation = "medium";
 
       function heatLossWattsPerM2() {
@@ -443,6 +449,7 @@
         drawConstructionBox();
         drawRadiator();
         drawTempSliders();
+        updateFooterCurrent();
       }
 
       function snap(value) {
@@ -466,6 +473,16 @@
           my >= radiator.y &&
           my <= radiator.y + radiator.h
         );
+      }
+
+      function updateFooterCurrent() {
+        const deltaT = computeDeltaT();
+        const el = document.getElementById("footerCurrent");
+        if (!el) return;
+
+        el.textContent = `Current: inflow ${flowTemp} °C / outflow ${returnTemp} °C / room ${roomTemp} °C, ΔT ≈ ${Math.round(
+          deltaT,
+        )} °C`;
       }
 
       function updateCursor(mx, my) {
@@ -629,10 +646,5 @@
       // Initial fullscreen sizing + first draw (after all constants/functions exist)
       resizeCanvas();
     </script>
-</script>
-  <footer>
-    Megjegyzés: a radiátor gyártók a teljesítményt általában EN 442 szerint adják meg
-    (előremenő 75 °C / visszatérő 65 °C / szobahőmérséklet 20 °C, ΔT50).
-  </footer>
   </body>
 </html>
