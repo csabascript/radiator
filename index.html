@@ -79,6 +79,11 @@
           <option value="poor">Gyenge</option>
         </select>
       </label>
+      <label style="margin-right: 16px">
+        Belmagasság:
+        <input id="ceilingHeight" type="number" min="1.8" max="4" step="0.1" />
+        m
+      </label>
     </header>
 
     <canvas id="canvas"></canvas>
@@ -110,6 +115,7 @@
       const MM_PER_GRID = 100; // 1 grid cell = 200 mm (visual grid stays the same)
       const CONSTRUCTION_GAP = 14;
       const CONSTRUCTION_HEIGHT = 28;
+      let ceilingHeight = 2.2; // default ceiling height in metres
 
       function drawGrid() {
         ctx.lineWidth = 1;
@@ -200,7 +206,6 @@
       }
 
       // Added slider state + bounds
-      let waterTemp = 70;
       let deltaDrop = 10;
 
       let flowTemp = 70; // IN temperature
@@ -229,6 +234,7 @@
       let radiatorType = "22";
       let roomTemp = 22;
       document.getElementById("roomTemp").value = roomTemp;
+      document.getElementById("ceilingHeight").value = ceilingHeight;
       let insulation = "medium";
 
       function heatLossWattsPerM2() {
@@ -300,6 +306,7 @@
         const wattsRounded = Math.round(watts / 50) * 50; // round to nearest 50 W
         const wPerM2 = heatLossWattsPerM2();
         const estM2 = wattsRounded / wPerM2;
+        const estM3 = estM2 * ceilingHeight;
 
         // Connectors
         const connectors = getConnectors();
@@ -336,7 +343,7 @@
         const lines = [
           `${widthMm} × ${heightMm} mm`,
           `~${wattsRounded.toLocaleString()} W`,
-          `≈ ${Math.max(0, Math.round(estM2)).toLocaleString()} m²`,
+          `≈ ${Math.max(0, Math.round(estM3)).toLocaleString()} m³`,
         ];
 
         ctx.font = "15px system-ui, sans-serif";
@@ -376,7 +383,7 @@
         ctx.font = "15px system-ui, sans-serif";
         ctx.fillStyle = "#222";
         ctx.fillText(
-          `≈ ${Math.max(0, Math.round(estM2)).toLocaleString()} m²`,
+          `≈ ${Math.max(0, Math.round(estM3)).toLocaleString()} m³`,
           infoX,
           infoY,
         );
@@ -642,6 +649,13 @@
         insulation = e.target.value;
         redraw();
       });
+
+      document
+        .getElementById("ceilingHeight")
+        .addEventListener("input", (e) => {
+          ceilingHeight = Number(e.target.value);
+          redraw();
+        });
 
       // Initial fullscreen sizing + first draw (after all constants/functions exist)
       resizeCanvas();
