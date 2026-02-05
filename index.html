@@ -19,13 +19,14 @@
       }
 
       header#controls {
-        height: 60px;
+        height: 80px;
         display: flex;
         align-items: center;
         padding: 0 16px;
         background: #fafafa;
         border-bottom: 1px solid #ddd;
         box-sizing: border-box;
+        flex-wrap: wrap;
       }
 
       header#controls label {
@@ -36,12 +37,31 @@
         margin-left: 8px;
         padding: 4px 8px;
       }
+
+      .inner {
+        max-width: 800px;
+        margin: 0 auto;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .logo {
+        font-size: 34px;
+        line-height: 1;
+        margin-right: 8px;
+      }
+
+      footer .inner {
+        display: block; /* stack lines in footer */
+      }
       footer {
         position: fixed;
         bottom: 0;
         left: 0;
         width: 100%;
-        font-size: 14px;
+        font-size: 16px;
         color: #444;
         background: #fafafa;
         border-top: 1px solid #ddd;
@@ -49,39 +69,46 @@
         box-sizing: border-box;
       }
       #footerCurrent {
-        font-weight: 500;
+        text-align: center;
+        font-weight: 600;
+        font-size: 22px;
+      }
+      .info-icon {
+        margin-left: 6px;
+        cursor: help;
+        font-size: 13px;
       }
     </style>
   </head>
   <body>
     <header id="controls">
-      <label style="margin-right: 16px">
-        Radiátor típusa:
-        <select id="radiatorType">
-          <option value="11">Acél – 11-es típus</option>
-          <option value="21">Acél – 21-es típus</option>
-          <option value="22" selected>Acél – 22-es típus</option>
-          <option value="33">Acél – 33-as típus</option>
-          <option value="aluminium">Alumínium</option>
-        </select>
-      </label>
+      <div class="inner">
+        <div class="logo">♨️</div>
+        <label style="margin-right: 16px">
+          Radiátor típusa:
+          <select id="radiatorType">
+            <option value="11">Acél – 11-es típus</option>
+            <option value="21">Acél – 21-es típus</option>
+            <option value="22" selected>Acél – 22-es típus</option>
+            <option value="33">Acél – 33-as típus</option>
+            <option value="aluminium">Alumínium</option>
+          </select>
+        </label>
 
-      <label style="margin-right: 16px">
-        Szobahőmérséklet cel:
-        <input id="roomTemp" type="number" min="5" max="30" step="1" />
-        °C
-      </label>
+        <label style="margin-right: 16px">
+          Szobahőmérséklet cel:
+          <input id="roomTemp" type="number" min="5" max="30" step="1" />
+          °C
+        </label>
+      </div>
     </header>
 
     <canvas id="canvas"></canvas>
 
     <footer>
-      <div>
-        Megjegyzés: a radiátor gyártók a teljesítményt általában EN 442 szerint
-        adják meg (előremenő 75 °C / visszatérő 65 °C / szobahőmérséklet 20 °C,
-        ΔT50).
+      <div class="inner">
+        <div id="footerCurrent" style="margin-top: 6px"></div>
       </div>
-      <div id="footerCurrent" style="margin-top: 4px"></div>
     </footer>
 
     <script>
@@ -90,8 +117,9 @@
 
       function resizeCanvas() {
         const headerHeight = document.getElementById("controls").offsetHeight;
+        const footerHeight = document.querySelector("footer").offsetHeight;
         canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight - headerHeight;
+        canvas.height = window.innerHeight - headerHeight - footerHeight;
         canvas.style.marginTop = "0";
 
         // Center radiator horizontally on load/resize
@@ -374,12 +402,6 @@
           radiator.y + radiator.h / 2,
         );
 
-        // --- Info for below radiator ---
-        // (widthMm, heightMm) already computed above for the size box
-        const estM2_good = wattsRounded / 45;
-        const estM2_medium = wattsRounded / 70;
-        const estM2_poor = wattsRounded / 100;
-
         // Connectors
         const connectors = getConnectors();
         for (const [key, p] of Object.entries(connectors)) {
@@ -406,60 +428,6 @@
         ctx.lineTo(hx, hy - 20);
         ctx.closePath();
         ctx.fill();
-
-        // ---- Info text below radiator ----
-        const infoX = radiator.x + radiator.w / 2;
-        let infoY = radiator.y + radiator.h + 18;
-
-        // Background box for info text
-        const mediumRoom = Math.max(0, Math.round(estM2_medium));
-        const humanText = `Kb. ${mediumRoom} m²-es átlagos szoba fűtésére alkalmas`;
-
-        ctx.font = "15px system-ui, sans-serif";
-        const paddingX = 10;
-        const paddingY = 6;
-        const lineHeights = [16, 16, 16, 16, 18];
-
-        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.strokeStyle = "#ddd";
-        ctx.lineWidth = 1;
-
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = "#333";
-        ctx.backgroundColor = "rgba(255, 255, 255, 0.8)";
-
-        // Wattage
-        ctx.font = "13px system-ui, sans-serif";
-        ctx.fillText(`~${wattsRounded.toLocaleString()} W`, infoX, infoY);
-        infoY += 16;
-
-        // Room size estimates by insulation
-        ctx.font = "13px system-ui, sans-serif";
-        ctx.fillStyle = "#444";
-        ctx.fillText(
-          `Gyenge szigetelês: ~${Math.max(0, Math.round(estM2_poor)).toLocaleString()} m²`,
-          infoX,
-          infoY,
-        );
-        infoY += 16;
-
-        ctx.fillText(
-          `Közepes szigetelês: ~${mediumRoom.toLocaleString()} m²`,
-          infoX,
-          infoY,
-        );
-        infoY += 16;
-
-        ctx.fillText(
-          `Jó szigetelês: ~${Math.max(0, Math.round(estM2_good)).toLocaleString()} m²`,
-          infoX,
-          infoY,
-        );
-        infoY += 18;
-        ctx.font = "14px system-ui, sans-serif";
-        ctx.fillStyle = "#333";
-        ctx.fillText(humanText, infoX, infoY);
       }
 
       // Added slider drawing helper below drawConstructionBox()
@@ -560,9 +528,27 @@
         const el = document.getElementById("footerCurrent");
         if (!el) return;
 
-        el.textContent = `Jelenlegi: előremenő ${flowTemp} °C / visszatérő ${returnTemp} °C / szobahőmérséklet ${roomTemp} °C, ΔT ≈ ${Math.round(
-          deltaT,
-        )} °C`;
+        const watts = estimateRadiatorWatts();
+        const wattsRounded = Math.round(watts / 50) * 50;
+
+        const estM2_good = wattsRounded / 45;
+        const estM2_medium = wattsRounded / 70;
+        const estM2_poor = wattsRounded / 100;
+
+        const mediumRoom = Math.max(0, Math.round(estM2_medium));
+        const humanText = `Kb. ${mediumRoom} m²-es átlagos szoba fűtésére alkalmas`;
+
+        el.innerHTML = `
+          <p>
+            ⚡ ~${wattsRounded.toLocaleString()} W
+            <span class="info-icon" title="Megjegyzés: a radiátor gyártók a teljesítményt általában EN 442 szerint adják meg (előremenő 75 °C / visszatérő 65 °C / szobahőmérséklet 20 °C, ΔT50).">ℹ️</span>
+          </p>
+          <p>
+            🏠▁ ~${Math.round(estM2_poor).toLocaleString()} m²&nbsp;&nbsp;
+            🏠▂▃ ~${Math.round(estM2_medium).toLocaleString()} m²&nbsp;&nbsp;
+            🏠▂▃▄ ~${Math.round(estM2_good).toLocaleString()} m²
+          </p>
+        `;
       }
 
       function updateCursor(mx, my) {
@@ -599,52 +585,6 @@
       }
 
       canvas.addEventListener("mousedown", (e) => {
-        canvas.addEventListener(
-          "touchstart",
-          (e) => {
-            e.preventDefault();
-            const rect = canvas.getBoundingClientRect();
-            const t = e.touches[0];
-            const mx = t.clientX - rect.left;
-            const my = t.clientY - rect.top;
-
-            // Start slider drags
-            if (hitInSlider(mx, my)) {
-              draggingInSlider = true;
-              return;
-            }
-            if (hitOutSlider(mx, my)) {
-              draggingOutSlider = true;
-              return;
-            }
-
-            const hx = radiator.x + radiator.w;
-            const hy = radiator.y + radiator.h;
-
-            // Resize handle (triangle area)
-            const inset = 10;
-            const rhx = hx - inset;
-            const rhy = hy - inset;
-
-            if (mx > rhx - 24 && mx < rhx && my > rhy - 24 && my < rhy) {
-              radiator.resizing = true;
-              return;
-            }
-
-            // Drag body
-            if (
-              mx >= radiator.x &&
-              mx <= radiator.x + radiator.w &&
-              my >= radiator.y &&
-              my <= radiator.y + radiator.h
-            ) {
-              radiator.dragging = true;
-              radiator.dragOffsetX = mx - radiator.x;
-              radiator.dragOffsetY = my - radiator.y;
-            }
-          },
-          { passive: false },
-        );
         const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
@@ -687,59 +627,6 @@
       });
 
       canvas.addEventListener("mousemove", (e) => {
-        canvas.addEventListener(
-          "touchmove",
-          (e) => {
-            e.preventDefault();
-            const rect = canvas.getBoundingClientRect();
-            const t = e.touches[0];
-            const mx = t.clientX - rect.left;
-            const my = t.clientY - rect.top;
-
-            const top = radiator.y;
-            const bottom = radiator.y + radiator.h;
-            const height = radiator.h;
-
-            const mapYToTemp = (y, min, max) =>
-              max - ((y - top) / height) * (max - min);
-
-            if (draggingInSlider) {
-              const rawFlow = Math.min(
-                FLOW_MAX,
-                Math.max(FLOW_MIN, mapYToTemp(my, FLOW_MIN, FLOW_MAX)),
-              );
-              flowTemp = Math.round(rawFlow / 5) * 5;
-              returnTemp = Math.max(RETURN_MIN, flowTemp - 10);
-              redraw();
-              return;
-            }
-
-            if (draggingOutSlider) {
-              const rawReturn = Math.min(
-                flowTemp,
-                Math.max(RETURN_MIN, mapYToTemp(my, RETURN_MIN, flowTemp)),
-              );
-              returnTemp = Math.round(rawReturn / 5) * 5;
-              redraw();
-              return;
-            }
-
-            if (radiator.resizing) {
-              const minSize = gridSize * 2;
-              radiator.w = Math.max(minSize, snap(mx - radiator.x));
-              radiator.h = Math.max(minSize, snap(my - radiator.y));
-              redraw();
-              return;
-            }
-
-            if (radiator.dragging) {
-              radiator.x = snap(mx - radiator.dragOffsetX);
-              radiator.y = snap(my - radiator.dragOffsetY);
-              redraw();
-            }
-          },
-          { passive: false },
-        );
         const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
@@ -800,21 +687,7 @@
         draggingOutSlider = false;
       });
 
-      canvas.addEventListener("touchend", () => {
-        radiator.resizing = false;
-        radiator.dragging = false;
-        draggingInSlider = false;
-        draggingOutSlider = false;
-      });
-
       canvas.addEventListener("mouseleave", () => {
-        radiator.resizing = false;
-        radiator.dragging = false;
-        draggingInSlider = false;
-        draggingOutSlider = false;
-      });
-
-      canvas.addEventListener("touchcancel", () => {
         radiator.resizing = false;
         radiator.dragging = false;
         draggingInSlider = false;
